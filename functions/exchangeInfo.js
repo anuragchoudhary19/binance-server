@@ -17,22 +17,26 @@ async function getExchangeInfo() {
       let pricePrecision = new Map();
       let quantityPrecision = new Map();
       let minimumQuantity = new Map();
+      let minimumNotional = new Map();
       symbols?.forEach((obj) => {
         if (obj?.quoteAsset === "USDT" && obj?.status === "TRADING") {
           let { filters } = obj;
           let lot_size = filters.find((ele) => ele?.filterType === "LOT_SIZE");
-          let minQty = Number(lot_size?.minQty);
-          let lot_decimal = 0;
-          if (minQty.toString().includes(".")) {
-            lot_decimal = minQty.toString().split(".")[1].length;
-          }
+          let min_notional = filters.find(
+            (ele) => ele?.filterType === "MIN_NOTIONAL"
+          );
           pricePrecision.set(obj?.symbol, parseInt(obj?.pricePrecision));
           quantityPrecision.set(obj?.symbol, obj?.quantityPrecision);
-          minimumQuantity.set(obj?.symbol, minQty);
+          minimumQuantity.set(obj?.symbol, Number(lot_size?.minQty));
+          minimumNotional.set(obj?.symbol, Number(min_notional?.notional));
         }
       });
-      // console.log(precision)
-      resolve({ pricePrecision, quantityPrecision, minimumQuantity });
+      resolve({
+        pricePrecision,
+        quantityPrecision,
+        minimumQuantity,
+        minimumNotional,
+      });
     } catch (error) {
       console.log(error);
       reject(error);

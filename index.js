@@ -24,12 +24,14 @@ app.use(cors());
 let pricePrecision;
 let quantityPrecision;
 let minimumQuantity;
+let minimumNotional;
 (async () => {
   try {
     let result = await getExchangeInfo();
     pricePrecision = result?.pricePrecision;
     quantityPrecision = result?.quantityPrecision;
     minimumQuantity = result?.minimumQuantity;
+    minimumNotional = result?.minimumNotional;
   } catch (error) {
     console.error("Error:", error);
   }
@@ -51,7 +53,9 @@ app.post("/order", async (req, res) => {
     order["pricePrecision"] = pricePrecision.get(order?.symbol);
     order["quantityPrecision"] = quantityPrecision.get(order?.symbol);
     order["minimumQuantity"] = minimumQuantity.get(order?.symbol);
+    order["minimumNotional"] = minimumNotional.get(order?.symbol);
     if (!order?.side) throw "Position side is missing";
+    if (!order?.sl) throw "Stoploss is missing";
     if (order?.side === "long") {
       let result = await openLongHedge(order);
       res.send(result);

@@ -12,7 +12,7 @@ var binance = new Binance().options({
   family: 4,
 });
 function calcQuantity(order, markPrice, balance) {
-  const { quantityPrecision, minimumQuantity } = order;
+  const { quantityPrecision, minimumQuantity, minimumNotional } = order;
   let sl = Number(order?.sl);
   let risk = 2 / 100;
   let risk_amt = balance * risk;
@@ -21,7 +21,8 @@ function calcQuantity(order, markPrice, balance) {
   if (quantity < minimumQuantity)
     throw "Quantity is less than minimum quantity";
   let notionalValue = markPrice * quantity;
-  if (notionalValue < 5) throw "Notional Value is less than 5 USDT";
+  if (notionalValue < minimumNotional)
+    throw "Notional Value is less than minimum required";
   return quantity;
 }
 function logger(symbol, side) {
@@ -35,22 +36,19 @@ function logger(symbol, side) {
 exports.openLongHedge = async (order) => {
   const { symbol, id } = order;
   try {
+    //check for repeat order
     let lastOrder = orders.getSync(symbol);
     if (lastOrder?.id === id) throw "Repeat Order";
-    //
+    //check for existing position
     let { positions, availableBalance } = await binance.futuresAccount();
-    if (!positions.length) return;
-    //
     let pos = positions?.find(
       (p) => p.symbol === symbol && p.positionSide === "LONG"
     );
     if (pos && Number(pos.positionAmt) !== 0)
       throw "Long position already exists";
-    //
+    //Place order
     let { markPrice } = await binance.futuresMarkPrice(symbol);
-    let quantity = calcQuantity(order, markPrice, availableBalance);
-    order["quantity"] = quantity;
-    // Place order
+    order["quantity"] = calcQuantity(order, markPrice, availableBalance);
     let res = await openLongPosition(order);
     logger(symbol, "Long");
     return res;
@@ -61,26 +59,20 @@ exports.openLongHedge = async (order) => {
 };
 exports.openShortHedge = async (order) => {
   const { symbol, id } = order;
-  // console.log(order);
-  // return {res:'ok'};
   try {
+    //check for repeat order
     let lastOrder = orders.getSync(symbol);
-    console.log(lastOrder)
-    if (lastOrder === id) throw "Repeat Order";
-    //
+    if (lastOrder?.id === id) throw "Repeat Order";
+    //check for existing position
     let { positions, availableBalance } = await binance.futuresAccount();
-    if (positions === undefined) return;
-    //
     let pos = positions?.find(
-      (position) =>
-        position.symbol === symbol && position.positionSide === "SHORT"
+      (p) => p.symbol === symbol && p.positionSide === "SHORT"
     );
     if (pos && Number(pos.positionAmt) !== 0)
       throw "Short position already exists";
-    //
+    //Place order
     let { markPrice } = await binance.futuresMarkPrice(symbol);
-    let quantity = calcQuantity(order, markPrice, availableBalance);
-    order["quantity"] = quantity;
+    order["quantity"] = calcQuantity(order, markPrice, availableBalance);
     let res = await openShortPosition(order);
     logger(symbol, "Short");
     return res;
@@ -92,7 +84,6 @@ exports.openShortHedge = async (order) => {
 const openLongPosition = async (order) => {
   try {
     let { quantity, pricePrecision, symbol } = order;
-    log(order);
     let result = await binance.futuresMarketBuy(symbol, quantity, {
       newOrderRespType: "RESULT",
     });
@@ -118,12 +109,10 @@ const openLongPosition = async (order) => {
 const openShortPosition = async (order) => {
   try {
     let { quantity, symbol, pricePrecision } = order;
-    log(order);
     let result = await binance.futuresMarketSell(symbol, quantity, {
       newOrderRespType: "RESULT",
     });
     if (result.msg) throw result.msg;
-    // console.log(result);
     let takeProfit, stopLoss;
     let executedQty = result?.executedQty;
     if (order?.tp) {
