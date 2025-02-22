@@ -12,7 +12,7 @@ var binance = new Binance().options({
   family: 4,
 });
 function calcQuantity(order, markPrice, balance) {
-  const { side, quantityPrecision, minimumQuantity } = order;
+  const { quantityPrecision, minimumQuantity } = order;
   let sl = Number(order?.sl);
   let risk = 2 / 100;
   let risk_amt = balance * risk;
@@ -34,19 +34,18 @@ function logger(symbol, side) {
 }
 exports.openLongHedge = async (order) => {
   const { symbol, id } = order;
-  // console.log(order);
-  // return {res:'ok'};
   try {
     let lastOrder = orders.getSync(symbol);
     if (lastOrder?.id === id) throw "Repeat Order";
     //
     let { positions, availableBalance } = await binance.futuresAccount();
-    if (positions === undefined) return;
+    if (!positions.length) return;
     //
-    let { positionAmt } = positions?.filter(
+    let pos = positions?.find(
       (p) => p.symbol === symbol && p.positionSide === "LONG"
-    )[0];
-    if (Number(positionAmt) !== 0) throw "Long position already exists";
+    );
+    if (pos && Number(pos.positionAmt) !== 0)
+      throw "Long position already exists";
     //
     let { markPrice } = await binance.futuresMarkPrice(symbol);
     let quantity = calcQuantity(order, markPrice, availableBalance);
@@ -71,11 +70,12 @@ exports.openShortHedge = async (order) => {
     let { positions, availableBalance } = await binance.futuresAccount();
     if (positions === undefined) return;
     //
-    let { positionAmt } = positions?.filter(
+    let pos = positions?.find(
       (position) =>
         position.symbol === symbol && position.positionSide === "SHORT"
-    )[0];
-    if (Number(positionAmt) !== 0) throw "Short position already exists";
+    );
+    if (pos && Number(pos.positionAmt) !== 0)
+      throw "Short position already exists";
     //
     let { markPrice } = await binance.futuresMarkPrice(symbol);
     let quantity = calcQuantity(order, markPrice, availableBalance);
