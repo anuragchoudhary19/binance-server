@@ -7,7 +7,6 @@ const morgan = require("morgan");
 const {
   futuresAccount,
   getFuturesBalances,
-  getFuturesCoins,
   getFuturesOpenPositons,
   getUnrealizedProfitCoins,
   getIncome,
@@ -37,9 +36,6 @@ let minimumQuantity;
 })();
 app.get("/account", futuresAccount);
 app.get("/book", getUnrealizedProfitCoins);
-// app.get("/api/futuresPrices", getFuturesPrices);
-// app.get("/api/futuresPrice/:coin", getFuturesPriceOfCoin);
-app.get("/api/coins", getFuturesCoins);
 app.post("/income", async (req, res) => {
   let result = await getIncome(req, res);
   res.send(result);
@@ -70,7 +66,7 @@ app.post("/order", async (req, res) => {
 app.post("/close/:coin", closePosition);
 app.post("/lev/:leverage", adjustLeverage);
 app.post("/wallet/:mode", adjustMarginMode);
-app.post("/health", (req, res) => {
+app.get("/health", (req, res) => {
   res.send({ ok: true });
 });
 const httpServer = createServer(app);
