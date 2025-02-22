@@ -65,6 +65,7 @@ exports.openShortHedge = async (order) => {
   // return {res:'ok'};
   try {
     let lastOrder = orders.getSync(symbol);
+    console.log(lastOrder)
     if (lastOrder === id) throw "Repeat Order";
     //
     let { positions, availableBalance } = await binance.futuresAccount();
