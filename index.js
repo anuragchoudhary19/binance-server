@@ -13,8 +13,13 @@ const {
   getPnl,
 } = require("./accounts/accounts.js");
 const { adjustMarginMode, adjustLeverage } = require("./orders/preferences.js");
-const { openLong, openShort, closePosition } = require("./orders/oneWay.js");
-const { openLongHedge, openShortHedge } = require("./orders/hedge.js");
+const { openLong, openShort } = require("./orders/oneWay.js");
+const {
+  openLongHedge,
+  openShortHedge,
+  closePosition,
+  updateSL,
+} = require("./orders/hedge.js");
 const { getExchangeInfo } = require("./functions/exchangeInfo.js");
 const app = express();
 app.use(express.json());
@@ -56,10 +61,11 @@ app.post("/order", async (req, res) => {
     order["minimumNotional"] = minimumNotional.get(order?.symbol);
     if (!order?.side) throw "Position side is missing";
     if (!order?.sl) throw "Stoploss is missing";
-    if (order?.side === "long") {
+    let side = order?.side.toUpperCase();
+    if (side === "LONG") {
       let result = await openLongHedge(order);
       res.send(result);
-    } else if (order?.side) {
+    } else if (side === "SHORT") {
       let result = await openShortHedge(order);
       res.send(result);
     }
@@ -67,7 +73,8 @@ app.post("/order", async (req, res) => {
     res.send(error);
   }
 });
-app.post("/close/:coin", closePosition);
+app.post("/close", closePosition);
+app.post("/updateSL", updateSL);
 app.post("/lev/:leverage", adjustLeverage);
 app.post("/wallet/:mode", adjustMarginMode);
 app.get("/health", (req, res) => {

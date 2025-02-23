@@ -42,10 +42,12 @@ exports.openLongHedge = async (order) => {
     //check for existing position
     let { positions, availableBalance } = await binance.futuresAccount();
     let pos = positions?.find(
-      (p) => p.symbol === symbol && p.positionSide === "LONG"
+      (p) =>
+        p.symbol === symbol &&
+        p.positionSide === "LONG" &&
+        Number(p.positionAmt) !== 0
     );
-    if (pos && Number(pos.positionAmt) !== 0)
-      throw "Long position already exists";
+    if (pos) throw "Long position already exists";
     //Place order
     let { markPrice } = await binance.futuresMarkPrice(symbol);
     order["quantity"] = calcQuantity(order, markPrice, availableBalance);
@@ -66,10 +68,12 @@ exports.openShortHedge = async (order) => {
     //check for existing position
     let { positions, availableBalance } = await binance.futuresAccount();
     let pos = positions?.find(
-      (p) => p.symbol === symbol && p.positionSide === "SHORT"
+      (p) =>
+        p.symbol === symbol &&
+        p.positionSide === "SHORT" &&
+        Number(p.positionAmt) !== 0
     );
-    if (pos && Number(pos.positionAmt) !== 0)
-      throw "Short position already exists";
+    if (pos) throw "Short position already exists";
     //Place order
     let { markPrice } = await binance.futuresMarkPrice(symbol);
     order["quantity"] = calcQuantity(order, markPrice, availableBalance);
@@ -109,6 +113,7 @@ const openLongPosition = async (order) => {
 const openShortPosition = async (order) => {
   try {
     let { quantity, symbol, pricePrecision } = order;
+    console.log(order);
     let result = await binance.futuresMarketSell(symbol, quantity, {
       newOrderRespType: "RESULT",
     });
@@ -193,115 +198,79 @@ const setTSL = async (symbol, quantity, price, cbRate, side, positionSide) => {
   // console.log(res);
   return res;
 };
-// exports.setTrailingStopLoss = async (symbol, quantity, price, cbRate, side) => {
-//   console.log(symbol, quantity, price, cbRate, side);
-//   let options = {
-//     type: 'TRAILING_STOP_MARKET',
-//     reduceOnly: true,
-//     activationPrice: price,
-//     callbackRate: cbRate,
-//     quantity,
-//     timeInForce: 'GTE_GTC',
-//     workingType: 'MARK_PRICE',
-//   };
-//   let res;
-//   if (side === 'sell') {
-//     res = await binance.futuresMarketSell(symbol, quantity, options);
-//   } else {
-//     res = await binance.futuresMarketBuy(symbol, quantity, options);
-//   }
-//   console.log(res);
-//   return res;
-// };
-const bookProfit = async (coin) => {
-  const { symbol, positionAmt } = coin;
-  if (parseFloat(positionAmt) > 0) {
-    console.log(
-      await binance.futuresMarketSell(
-        symbol,
-        parseInt(positionAmt),
-        { reduceOnly: true },
-        { newOrderRespType: "RESULT" }
-      )
+exports.updateSL = async (req, res) => {
+  let { symbol, positionSide, SL } = req.body;
+  try {
+    let result = await binance.futuresOpenOrders(symbol);
+    let slOrder = result?.find(
+      (o) =>
+        o.symbol === symbol &&
+        o.positionSide === positionSide &&
+        o.type === "STOP_MARKET"
     );
-  }
-  if (parseFloat(positionAmt) < 0) {
-    console.log(
-      await binance.futuresMarketBuy(
-        symbol,
-        Math.abs(parseInt(positionAmt)),
-        { reduceOnly: true },
-        { newOrderRespType: "RESULT" }
-      )
+    if (slOrder) {
+      let cancelledOrder = await binance.futuresCancel(symbol, {
+        orderId: slOrder?.orderId,
+      });
+    }
+    let { positions } = await binance.futuresAccount();
+    let pos = positions?.find(
+      (p) =>
+        p.symbol === symbol &&
+        p.positionSide === positionSide &&
+        Number(p.positionAmt) !== 0
     );
-  }
-};
-
-const cancelAllOpenOrders = async (symbol) => {
-  let result = await binance.futuresOpenOrders(symbol);
-  for (let i = 0; i < result.length; i++) {
-    let param = { orderId: result[i].orderId };
-    await binance.futuresCancel(symbol, param);
+    if (!pos) return res.send("No position exists");
+    let side = positionSide === "LONG" ? "sell" : "buy";
+    let newSL = await setStopLoss(
+      symbol,
+      Math.abs(pos?.positionAmt),
+      SL,
+      side,
+      positionSide
+    );
+    console.log(newSL);
+    return res.send(newSL);
+  } catch (error) {
+    return res.send(error);
   }
 };
 exports.closePosition = async (req, res) => {
-  let symbol = req.params.coin;
+  if (!req.body.symbol) throw "Symbol is missing";
+  if (!req.body.positionSide) throw "Position side is missing";
+  let { symbol, positionSide } = req.body;
   try {
     let { positions } = await binance.futuresAccount();
-    let { positionAmt } = positions.filter(
-      (position) => position.symbol === symbol
-    )[0];
-    if (parseInt(positionAmt) === 0) return res.send("No Position");
+    let pos = positions?.find(
+      (p) =>
+        p.symbol === symbol &&
+        p.positionSide === positionSide &&
+        Number(p.positionAmt) !== 0
+    );
+    // console.log(pos);
+    if (!pos) return res.send("No Position");
     let result;
-    if (parseFloat(positionAmt) > 0) {
+    let params1 = {
+      type: "MARKET",
+      workingType: "MARK_PRICE",
+      positionSide,
+    };
+    if (positionSide === "LONG") {
       result = await binance.futuresMarketSell(
         symbol,
-        positionAmt,
-        { reduceOnly: true },
-        { newOrderRespType: "RESULT" }
+        Number(pos.positionAmt),
+        params1
       );
-    } else {
+    } else if (positionSide === "SHORT") {
       result = await binance.futuresMarketBuy(
         symbol,
-        Math.abs(parseFloat(positionAmt)),
-        { reduceOnly: true },
-        { newOrderRespType: "RESULT" }
+        Math.abs(Number(pos.positionAmt)),
+        params1
       );
     }
     return res.send(result);
   } catch (e) {
     console.log(e);
-    res.send("err");
-  }
-};
-exports.closePositions = async (symbol) => {
-  try {
-    let { positions } = await binance.futuresAccount();
-    let { positionAmt } = positions.filter(
-      (position) => position.symbol === symbol
-    )[0];
-    if (parseInt(positionAmt) === 0) return "No Position";
-    let result;
-    if (parseFloat(positionAmt) > 0) {
-      result = await binance.futuresMarketSell(
-        symbol,
-        positionAmt,
-        { reduceOnly: true },
-        { newOrderRespType: "RESULT" }
-      );
-    } else {
-      result = await binance.futuresMarketBuy(
-        symbol,
-        Math.abs(parseFloat(positionAmt)),
-        { reduceOnly: true },
-        { newOrderRespType: "RESULT" }
-      );
-    }
-    if (result?.symbol) {
-      console.log(result?.symbol + " closed");
-    }
-    return result;
-  } catch (e) {
-    console.log(e);
+    res.send(e);
   }
 };
